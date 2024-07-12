@@ -25,22 +25,22 @@ class Frame:
         return f"Frame({hex(self.frame_number)})"
 
     def evaluate_next_access_time(self, alpha=0.5):
-        current_time = float(time.time())
+        cur_time = float(time.time())
         
         if self.last_access_time is None:
-            self.last_access_time = current_time
+            self.last_access_time = cur_time
             return
         
-        actual_delta = current_time - self.last_access_time
-        self.last_access_time = current_time
+        actual_delta = cur_time - self.last_access_time
+        self.last_access_time = cur_time
         
         # Predict the next access time based on the smoothed time delta
         if self.predicted_delta is None:
             self.predicted_delta = actual_delta
         else:
-            self.predicted_delta = alpha * actual_delta + (1 - alpha) * self.predicted_delta
+            self.predicted_delta = alpha * self.predicted_delta + (1 - alpha) * actual_delta
         
-        self.next_access_time = current_time + self.predicted_delta
+        self.next_access_time = cur_time + self.predicted_delta
         return
 
 
@@ -316,7 +316,7 @@ class RBTree:
         def in_order_traversal(node):
             if node != self.nil:
                 in_order_traversal(node.left)
-                print("\t" + node.frame.__repr__() + f":{node.frame.next_access_time}s")
+                print("\t" + node.frame.__repr__() + f":{node.frame.next_access_time}")
                 in_order_traversal(node.right)
         in_order_traversal(self.root)
 
@@ -331,23 +331,29 @@ class MyCache:
 
 
     def access(self, frame_number):
-        print(f"Accessing Frame:{hex(frame_number)}", end=f', Time:{float(time.time())}\n')
+        cur_time = float(time.time())
+        print(f"Accessing Frame:{hex(frame_number)}", end=f', Time:{cur_time}\n')
 
         found_layer, found_frame = self.search(frame_number)
+        #found_frame.ref_count += 1
+        #found_frame.last_access_time = cur_time
         if found_layer == 0:
             # 已在第0層，移動到下一層
             print(f"{found_frame} Found in Layer 0, Moving to Layer 1...")
             found_frame.ref_count += 1
+            found_frame.last_access_time = cur_time
             self.layer0.remove(found_frame)
             self.layer1.ins(found_frame)
         elif found_layer == 1:
             # 已在第1層，且在某set中，移動到set的頭
             found_frame.ref_count += 1
+            found_frame.last_access_time = cur_time
             print(f"{found_frame} Found in Layer 1, Updating to Head...")
             self.layer1.mv_to_head(found_frame)
         elif found_layer == 2:
             # 已在第2層，用"指數平滑"估算Frame下一次被存取的時間，計算完後應該要調整紅黑數的平衡
             found_frame.ref_count += 1
+            found_frame.last_access_time = cur_time
 
             l2_root = self.layer2.root
             l2_min_node = self.layer2.min(l2_root)
@@ -363,8 +369,10 @@ class MyCache:
         else:
             # 不在任一層，第一次被存取，加入到第0層
             new_frame = Frame(frame_number)
+            new_frame.ref_count += 1
+            new_frame.last_access_time = cur_time
             self.layer0.append(new_frame)
-            print("Firstly accessed, Added to Layer 0.")
+            print("Firstly accessed, Adding to Layer 0...")
 
         # 檢查第1層有沒有多餘的Frame，有的話把多餘的移出來放到第2層
         old_frames = self.layer1.rmv_old_frames()
