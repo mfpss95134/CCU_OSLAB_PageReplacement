@@ -383,6 +383,7 @@ class MyCache:
         self.print_layers()
         print("------------------------------------------------------------------------------------------------------------------------")
         #time.sleep(2)  #模擬存取延遲，不然估計的存取時間看起來會不明顯
+        return
 
 
     def search(self, frame_number):
@@ -422,6 +423,7 @@ class MyCache:
             print(f"\tSet #{set_idx}: {frames}")
         print("Layer 2:")
         self.layer2.print_tree()
+        return
 
 
 

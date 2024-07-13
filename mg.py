@@ -22,6 +22,7 @@ class MGLRU:
         self.gen_size = gen_size  # 每代大小
         self.evict_cnt = 0     # 淘汰數量計數
         self.gens = {i: [] for i in range(1, num_gens + 1)}  # 初始化每代
+        self.swap = []
 
 
     def access(self, frame_number):
@@ -29,8 +30,8 @@ class MGLRU:
 
         found_gen_num, found_frame = self.search(frame_number)
         if found_gen_num:
-            # 已存在於某gen中，往上層提升
-            print(f"{found_frame} Found in Gen {found_gen_num}, Promoting...")
+            # 已存在於某gen中，提升到最年輕世代的頭部
+            print(f"{found_frame} Found in Gen {found_gen_num}, Promoting to TOP...")
             found_frame.ref_count += 1
             self.promote(found_gen_num, found_frame)
         else:
@@ -43,6 +44,7 @@ class MGLRU:
         # 收尾整理所有的gen然後輸出檢視
         self.handle_gens_overflow()
         self.print_gens()
+        return
 
 
     def search(self, frame_number):
@@ -55,6 +57,13 @@ class MGLRU:
 
 
     def promote(self, cur_gen_num, frame):
+        cur_gen = self.gens[cur_gen_num]
+        cur_gen.remove(frame)
+        frame.age_gen = 1
+        self.gens[1].insert(0, frame)
+        return
+        """
+        #這段是原本錯誤的promote流程
         cur_gen = self.gens[cur_gen_num]
         frame_idx = cur_gen.index(frame)
 
@@ -69,6 +78,8 @@ class MGLRU:
                 frame.age_gen -= 1    #層數上升
                 self.gens[cur_gen_num - 1].append(frame) #附加到上層的尾部，加到頭還尾要再確認
                 print(f"Promoted: {frame}")
+                return
+        """
 
 
     def handle_gens_overflow(self):
@@ -77,29 +88,37 @@ class MGLRU:
             while len(self.gens[i]) > self.gen_size:
                 oldest_frame = self.gens[i].pop()
                 if i == self.num_gens:
-                    # 已經是最底層，直接置換掉
+                    # 若已是在最老世代，就直接置換掉(swap out)
                     self.evict_cnt += 1
                     print(f"Evicted: {oldest_frame}")
+                    self.swap.insert(0, oldest_frame)
                 else:
-                    # 往下層移動
+                    # 移動到下個時代的頭部
                     oldest_frame.age_gen += 1
                     self.gens[i+1].insert(0, oldest_frame)
+        return
 
 
     def print_gens(self):
-        # 打印當前所有代的狀態
         print("\n")
+        # 印出所有世代的狀態
         for gen_num, gen in self.gens.items():
             print(f"Gen {gen_num}:")
             for f in gen:
                 print(f"\t{f}")
+        # 印出被置換出去的Frame
+        print(f"Swap:")
+        for f in self.swap:
+            print(f"\t{f}")
+
         print("-------------------------------------------------------------")
+        return
 
 
 
 
 # Example usage
 mglru = MGLRU()
-test_sequence = [1, 2, 3, 4, 5, 6, 7, 8, 8, 7, 7, 6,   7,7]
+test_sequence = [1, 2, 3, 4, 5, 6, 7, 8, 8, 7, 7, 6,   7,7,  4]
 for frame_number in test_sequence:
     mglru.access(frame_number)
