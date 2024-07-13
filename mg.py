@@ -2,7 +2,7 @@ class Frame:
     def __init__(self, frame_number):
         self.frame_number = frame_number  # 頁框編號
         self.ref_count = 0                # 訪問次數
-        self.age_gen = 3                  # 初始設置在第三代中
+        self.age_gen = 2                  # 初始設置在第二代中
 
     def __repr__(self):
         # 提供框架的字符串表示
@@ -20,22 +20,31 @@ class MGLRU:
     def __init__(self, num_gens=4, gen_size=2):
         self.num_gens = num_gens  # 世代數量
         self.gen_size = gen_size  # 每代大小
-        self.evict_cnt = 0     # 淘汰數量計數
+        self.swapout_cnt = 0      # 換出次數(swap out次數)
+        self.refault_cnt = 0      # 
         self.gens = {i: [] for i in range(1, num_gens + 1)}  # 初始化每代
         self.swap = []
 
 
     def access(self, frame_number):
-        print(f"Accessing Frame:{hex(frame_number)}")
+        print(f"Accessing Frame Number: {hex(frame_number)}")
 
         found_gen_num, found_frame = self.search(frame_number)
-        if found_gen_num:
-            # 已存在於某gen中，提升到最年輕世代的頭部
+        if isinstance(found_gen_num, int) and found_gen_num >= 1 and found_gen_num <= 4:
+            # 已存在於1~4某gen中，提升到最年輕世代的頭部
             print(f"{found_frame} Found in Gen {found_gen_num}, Promoting to TOP...")
             found_frame.ref_count += 1
             self.promote(found_gen_num, found_frame)
+        elif found_gen_num == "swap":
+            # 在swap中找到，代表曾經被存取過但太久沒被存取，所以被置換出去了
+            print(f"{found_frame} Found in Swap, Re-Entering MGLRU...")
+            self.refault_cnt += 1
+            self.swap.remove(found_frame)
+            found_frame.ref_count += 1
+            found_frame.age_gen = 1
+            self.gens[1].insert(0, found_frame)
         else:
-            # 不存在於gen中，是新的Frame，插入到gen[2]
+            # 不存在於任一gen中，是新的Frame，插入到gen[2]
             print("Firstly accessed, Adding to Gen 2...")
             new_frame = Frame(frame_number)
             new_frame.ref_count += 1
@@ -49,10 +58,16 @@ class MGLRU:
 
     def search(self, frame_number):
         # 尋找特定框架，若找到則返回
+        # 先搜尋各個世代
         for gen_num, gen in self.gens.items():
             for f in gen:
                 if f.frame_number == frame_number:
                     return gen_num, f
+        # 搜尋swap
+        for f in self.swap:
+            if f.frame_number == frame_number:
+                return "swap", f
+        # 什麼都沒找到，無功而返
         return None, None
 
 
@@ -89,9 +104,10 @@ class MGLRU:
                 oldest_frame = self.gens[i].pop()
                 if i == self.num_gens:
                     # 若已是在最老世代，就直接置換掉(swap out)
-                    self.evict_cnt += 1
-                    print(f"Evicted: {oldest_frame}")
+                    oldest_frame.age_gen += 1
                     self.swap.insert(0, oldest_frame)
+                    self.swapout_cnt += 1
+                    print(f"Swapped out: {oldest_frame}")
                 else:
                     # 移動到下個時代的頭部
                     oldest_frame.age_gen += 1
@@ -119,6 +135,9 @@ class MGLRU:
 
 # Example usage
 mglru = MGLRU()
-test_sequence = [1, 2, 3, 4, 5, 6, 7, 8, 8, 7, 7, 6,   7,7,  4]
+test_sequence = [1, 2, 3, 4, 5, 6, 7, 8, 8, 7, 7, 6,   7,7,  4,  1]
 for frame_number in test_sequence:
     mglru.access(frame_number)
+
+print(f"SWAP_OUT: {mglru.swapout_cnt}")
+print(f"REFAULT:  {mglru.refault_cnt}")
