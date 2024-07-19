@@ -131,7 +131,7 @@ class MGLRU:
             for f in gen:
                 print(f"\t{f}")
         # 印出被置換出去的Frame
-        print(f"Swap:")
+        print(f"Swap :")
         for f in self.swap:
             print(f"\t{f}")
 
@@ -142,10 +142,27 @@ class MGLRU:
 
 
 # Example usage
-mglru = MGLRU()
-test_sequence = [1, 2, 3, 4, 5, 6, 7, 8, 8, 7, 7, 6,   7,7,  4,  1]
-for frame_number in test_sequence:
-    mglru.access(frame_number)
+import sys
+if __name__ == "__main__":
+    if len(sys.argv) == 2:
+        # 有指定要模擬的log檔參數
+        phy_addrs = []
+        with open(sys.argv[1], 'r') as pmu_log_file:
+            for line in pmu_log_file:
+                addr_hex = line.strip()  #移除行尾的換行符號和空格
+                addr_int = int(addr_hex, 16)  #將16進制轉換為10進制
+                phy_addrs.append(addr_int)
+        print(phy_addrs)
+        input()
+        mglru = MGLRU(4, 256)
+        for phy_addr in phy_addrs:
+            mglru.access(phy_addr >> 12)
+    else:
+        # 沒指定參數，用預設的簡單測試資料模擬
+        mglru = MGLRU()
+        test_sequence = [1, 2, 3, 4, 5, 6, 7, 8, 8, 7, 7, 6,   7,7,  4,  1]
+        for frame_number in test_sequence:
+            mglru.access(frame_number)
 
-print(f"SWAP_OUT: {mglru.swapout_cnt}")
-print(f"REFAULT:  {mglru.refault_cnt}")
+    print(f"SWAP_OUT: {mglru.swapout_cnt}")
+    print(f" REFAULT: {mglru.refault_cnt}")
