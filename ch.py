@@ -50,6 +50,7 @@ class SetAssociativeCache:
     def __init__(self, num_sets: int, num_ways: int):
         self.num_sets = num_sets
         self.num_ways = num_ways
+        self.capacity = num_sets * num_ways
         self.sets = {i: [] for i in range(num_sets)}
 
 
@@ -63,15 +64,10 @@ class SetAssociativeCache:
     def rmv(self, frame: Frame):
         set_idx = frame.frame_number % self.num_sets
         tgt_set = self.sets[set_idx]
-
         for f in tgt_set:
             if f == frame:
                 tgt_set.remove(f)
         return
-        """
-        if frame in tgt_set:
-            tgt_set.remove(frame)
-        """
 
 
     def fnd(self, frame: Frame): #暫時沒用
@@ -115,6 +111,7 @@ class RBTree:
     def __init__(self):
         self.nil = self.Node(None)
         self.root = self.nil
+        self.node_cnt = 0
 
 
     def ins(self, frame: Frame):
@@ -137,6 +134,7 @@ class RBTree:
             parent.right = node
 
         self.ins_fix(node)
+        self.node_cnt +=1 #++
 
 
     def rmv(self, frame: Frame): #移除包含frame的紅黑樹節點
@@ -167,6 +165,7 @@ class RBTree:
             y.color = z.color
         if y_original_color == 'black':
             self.rmv_fix(x)
+        self.node_cnt -=1 #--
 
 
     def ins_fix(self, node):
@@ -268,6 +267,16 @@ class RBTree:
         return x
 
 
+    def max(self): #用來找LRU_node的，寫法和min稍有不同
+        cur_node = self.root
+        if cur_node == self.nil:
+            return None  # 樹是空的
+        while cur_node.right != self.nil:
+            cur_node = cur_node.right
+        return cur_node
+
+
+
     def fnd(self, frame: Frame): #找到包含frame的紅黑樹節點
         cur_node = self.root
         while cur_node != self.nil:
@@ -312,6 +321,15 @@ class RBTree:
         y.parent = x
 
 
+    # 遞迴計算節點數量，太費時了，不使用
+    def count_nodes(self, node=None):
+        if node is None:
+            node = self.root
+        if node == self.nil:
+            return 0
+        return 1 + self.size(node.left) + self.size(node.right)
+
+
     def print_tree(self):
         def in_order_traversal(node):
             if node != self.nil:
@@ -319,6 +337,7 @@ class RBTree:
                 print("\t" + node.frame.__repr__() + f":{node.frame.next_access_time}")
                 in_order_traversal(node.right)
         in_order_traversal(self.root)
+        ##print(f"Node_cnt: {self.node_cnt}")
 
 
 
@@ -328,6 +347,9 @@ class MyCache:
         self.layer0 = []                         # 第0層：過濾層，用來過濾掉那些短時間內只會存取一次的Frame
         self.layer1 = SetAssociativeCache(4, 8)  # 第1層：主要的記錄層，用來快速搜尋用的
         self.layer2 = RBTree()                   # 第2層：
+        self.swap   = []                         # Swap Space：滿了之後要丟到這裡面來
+        self.swapout_cnt = 0      # 換出次數(swap out次數)
+        self.refault_cnt = 0      # 
 
 
     def access(self, frame_number):
@@ -339,25 +361,28 @@ class MyCache:
         #found_frame.last_access_time = cur_time
         if found_layer == 0:
             # 已在第0層，移動到下一層
-            print(f"{found_frame} Found in Layer 0, Moving to Layer 1...")
-            found_frame.ref_count += 1
-            found_frame.last_access_time = cur_time
-            self.layer0.remove(found_frame)
-            self.layer1.ins(found_frame)
-        elif found_layer == 1:
-            # 已在第1層，且在某set中，移動到set的頭
-            found_frame.ref_count += 1
-            found_frame.last_access_time = cur_time
-            print(f"{found_frame} Found in Layer 1, Updating to Head...")
-            self.layer1.mv_to_head(found_frame)
-        elif found_layer == 2:
-            # 已在第2層，用"指數平滑"估算Frame下一次被存取的時間，計算完後應該要調整紅黑數的平衡
             found_frame.ref_count += 1
             found_frame.last_access_time = cur_time
 
+            print(f"{found_frame} Found in Layer 0, Moving to Layer 1...")
+            self.layer0.remove(found_frame)
+            self.layer1.ins(found_frame)
+        elif found_layer == 1:
+            # 已在第1層某set中
+            found_frame.ref_count += 1
+            found_frame.last_access_time = cur_time
+            # 移動到所在set的頭部
+            print(f"{found_frame} Found in Layer 1, Updating to Head...")
+            self.layer1.mv_to_head(found_frame)
+        elif found_layer == 2:
+            # 已在第2層，
+            found_frame.ref_count += 1
+            found_frame.last_access_time = cur_time
+            # 用"指數平滑"估算Frame下一次被存取的時間，計算完後應該要調整紅黑數的平衡
             l2_root = self.layer2.root
             l2_min_node = self.layer2.min(l2_root)
             if found_frame == l2_min_node.frame:
+                #紅黑樹中，最近期會被存取的
                 print(f"{found_frame} Found in Layer 2, Promoting to Layer 1...")
                 self.layer2.rmv(found_frame)
                 self.layer1.ins(found_frame)
@@ -366,23 +391,44 @@ class MyCache:
                 self.layer2.rmv(found_frame)
                 found_frame.evaluate_next_access_time()
                 self.layer2.ins(found_frame)
+        elif found_layer == 3:
+            # 已在swap中，代表太久沒被使用，所以被踢出到swap去了
+            found_frame.ref_count += 1
+            found_frame.last_access_time = cur_time
+            # 重新加入到第1層
+            print(f"{found_frame} Found in Swap, Promoting to Layer 1...")
+            self.swap.remove(found_frame)
+            self.layer1.ins(found_frame)
+            self.refault_cnt += 1
         else:
             # 不在任一層，第一次被存取，加入到第0層
+            print("Firstly accessed, Adding to Layer 0...")
             new_frame = Frame(frame_number)
             new_frame.ref_count += 1
             new_frame.last_access_time = cur_time
-            self.layer0.append(new_frame)
-            print("Firstly accessed, Adding to Layer 0...")
+            self.layer0.insert(0, new_frame)
 
+
+        # 檢查第0層有沒有多餘的Frame，有的話就捨棄掉
+        while len(self.layer0) > (100 - self.layer1.capacity): #限制容量為100，多餘的就捨棄掉
+            self.layer0.pop()
         # 檢查第1層有沒有多餘的Frame，有的話把多餘的移出來放到第2層
         old_frames = self.layer1.rmv_old_frames()
         for f in old_frames:
+            f.evaluate_next_access_time()
             self.layer2.ins(f)
+        # 檢查第2層有沒有多餘的Frame，有的話就丟到swap去（相當於Swap Out）
+        while self.layer2.node_cnt > 824:
+            LRU_node = self.layer2.max()
+            self.layer2.rmv(LRU_node.frame)
+            self.swap.append(LRU_node.frame)
+            self.swapout_cnt += 1
+            print(f"Swapped out: {LRU_node.frame}")
         # 最後收尾印出來
         print("\n")
         self.print_layers()
         print("------------------------------------------------------------------------------------------------------------------------")
-        #time.sleep(2)  #模擬存取延遲，不然估計的存取時間看起來會不明顯
+        #time.sleep(2)  #模擬存取延遲，不然測試估計的存取時間看起來會不明顯
         return
 
 
@@ -401,6 +447,12 @@ class MyCache:
         found_node = self.layer2.fnd(Frame(frame_number))
         if found_node:
             return 2, found_node.frame
+        # 在swap搜尋到
+        for f in self.swap:
+            if f.frame_number == frame_number:
+                return 3, f
+        # 搜尋不到
+        return None, None
         """
         cur_node = self.layer2.root
         while cur_node != self.layer2.nil:
@@ -411,9 +463,7 @@ class MyCache:
             else:
                 cur_node = cur_node.right
         """
-        # 搜尋不到
-        return None, None
-
+        
 
     def print_layers(self):
         print("Layer 0:")
@@ -423,6 +473,7 @@ class MyCache:
             print(f"\tSet #{set_idx}: {frames}")
         print("Layer 2:")
         self.layer2.print_tree()
+        print(f"Swap: {self.swap}")
         return
 
 
@@ -430,6 +481,11 @@ class MyCache:
 
 # Example usage
 cache = MyCache()
-test_sequence = [1, 5, 9, 13, 17, 21, 25, 29, 1, 5, 1, 9, 13, 17, 21, 25, 29, 33, 33, 37, 37, 1,5,1,5,1,5 ,13,13,13,13,13]
+test_sequence = [1, 5, 9, 13, 17, 21, 25, 29, 1, 5, 1, 9, 13, 17, 21, 25, 29, 33, 33, 37, 37, 1,5,1,5,1,5 ,13,13,13,13,13 ,17]
 for frame_number in test_sequence:
     cache.access(frame_number)
+
+
+print("------------------------------------------------------------------------------------------------------------------------")
+print(f"SWAP_OUT: {cache.swapout_cnt}")
+print(f" REFAULT: {cache.refault_cnt}")
