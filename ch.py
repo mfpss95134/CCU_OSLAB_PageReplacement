@@ -1,5 +1,6 @@
 import time
 import os
+import sys
 
 
 class Frame:
@@ -25,8 +26,6 @@ class Frame:
         return f"Frame({hex(self.frame_number)})"
 
     def evaluate_next_access_time(self, alpha=0.5):
-        cur_time = float(time.time())
-        
         if self.last_access_time is None:
             self.last_access_time = cur_time
             return
@@ -52,12 +51,15 @@ class SetAssociativeCache:
         self.num_ways = num_ways
         self.capacity = num_sets * num_ways
         self.sets = {i: [] for i in range(num_sets)}
+        self.frame_cnt = 0
 
 
     def ins(self, frame: Frame):
         set_idx = frame.frame_number % self.num_sets
         tgt_set = self.sets[set_idx]
         tgt_set.insert(0, frame)
+
+        self.frame_cnt += 1 #++
         return
 
 
@@ -67,6 +69,8 @@ class SetAssociativeCache:
         for f in tgt_set:
             if f == frame:
                 tgt_set.remove(f)
+
+        self.frame_cnt -= 1 #--
         return
 
 
@@ -97,6 +101,8 @@ class SetAssociativeCache:
         for set_idx, tgt_set in self.sets.items():
             while len(tgt_set) > self.num_ways:
                 old_frames.append(tgt_set.pop())
+
+        self.frame_cnt -= len(old_frames)
         return old_frames
 
 
@@ -345,7 +351,7 @@ class RBTree:
 class MyCache:
     def __init__(self):
         self.layer0 = []                         # 第0層：過濾層，用來過濾掉那些短時間內只會存取一次的Frame
-        self.layer1 = SetAssociativeCache(4, 8)  # 第1層：主要的記錄層，用來快速搜尋用的
+        self.layer1 = SetAssociativeCache(8, 8)  # 第1層：主要的記錄層，用來快速搜尋用的
         self.layer2 = RBTree()                   # 第2層：
         self.swap   = []                         # Swap Space：滿了之後要丟到這裡面來
         self.swapout_cnt = 0      # 換出次數(swap out次數)
@@ -353,7 +359,6 @@ class MyCache:
 
 
     def access(self, frame_number):
-        cur_time = float(time.time())
         print(f"Accessing Frame:{hex(frame_number)}", end=f', Time:{cur_time}\n')
 
         found_layer, found_frame = self.search(frame_number)
@@ -428,7 +433,7 @@ class MyCache:
         print("\n")
         self.print_layers()
         print("------------------------------------------------------------------------------------------------------------------------")
-        #time.sleep(2)  #模擬存取延遲，不然測試估計的存取時間看起來會不明顯
+        #time.sleep(2)  #模擬存取延遲，不然測試時，估計的存取時間看起來會不明顯
         return
 
 
@@ -480,12 +485,35 @@ class MyCache:
 
 
 # Example usage
-cache = MyCache()
-test_sequence = [1, 5, 9, 13, 17, 21, 25, 29, 1, 5, 1, 9, 13, 17, 21, 25, 29, 33, 33, 37, 37, 1,5,1,5,1,5 ,13,13,13,13,13 ,17]
-for frame_number in test_sequence:
-    cache.access(frame_number)
+cur_time = 0
+if __name__ == "__main__":
+    if len(sys.argv) == 2:
+        # 有指定要模擬的log檔參數
+        pmu_times = []
+        phy_addrs = []
+        with open(sys.argv[1], 'r') as pmu_log_file:
+            for line in pmu_log_file:
+                pmu_time = float(line.split()[0])   #字串轉浮點數
+                phy_addr = int(line.split()[1], 16) #將16進制轉換為10進制
+                pmu_times.append(pmu_time)
+                phy_addrs.append(phy_addr)
+        print(pmu_times)
+        print(phy_addrs)
+        input()
+
+        cache = MyCache()
+        for i in range(len(pmu_times)):
+            cur_time = pmu_times[i]
+            cache.access(phy_addrs[i] >> 12)
+    else:
+        cache = MyCache()
+        test_sequence = [1, 5, 9, 13, 17, 21, 25, 29, 1, 5, 1, 9, 13, 17, 21, 25, 29, 33, 33, 37, 37, 1,5,1,5,1,5 ,13,13,13,13,13 ,17]
+        for frame_number in test_sequence:
+            cur_time = float(time.time())
+            cache.access(frame_number)
 
 
 print("------------------------------------------------------------------------------------------------------------------------")
 print(f"SWAP_OUT: {cache.swapout_cnt}")
 print(f" REFAULT: {cache.refault_cnt}")
+print(f"L0_cnt:{len(cache.layer0)}, L1_cnt:{cache.layer1.frame_cnt}, L2_cnt:{cache.layer2.node_cnt}")
