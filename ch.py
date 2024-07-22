@@ -37,7 +37,8 @@ class Frame:
         if self.predicted_delta is None:
             self.predicted_delta = actual_delta
         else:
-            self.predicted_delta = alpha * self.predicted_delta + (1 - alpha) * actual_delta
+            #self.predicted_delta = alpha * self.predicted_delta + (1 - alpha) * actual_delta
+            self.predicted_delta = (1 - alpha) * self.predicted_delta + alpha * actual_delta
         
         self.next_access_time = cur_time + self.predicted_delta
         return
