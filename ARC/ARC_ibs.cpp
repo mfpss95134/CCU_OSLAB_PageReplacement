@@ -266,6 +266,9 @@ int main(int argc, char *argv[])
   }
 
   fclose(log_file);
+  printf("Hit: %u\n", HitCount);
+  printf("Miss: %u\n", MissCount);
+  printf("Hit Ratio = %5.4f %%\n", ((float)(HitCount * 100) / (HitCount + MissCount)));
 
 
 
