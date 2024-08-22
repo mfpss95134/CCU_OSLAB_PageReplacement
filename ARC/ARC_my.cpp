@@ -251,16 +251,18 @@ int main(int argc, char *argv[])
   //讀檔 + 跑
   char phy_addr_str[256];
   unsigned long long phy_addr = 0;
-  cacheSize = 2048;
+  cacheSize = 262144;//262144;
   p = 0;
   c = cacheSize;
+  int cnt = 0;
   while (fscanf(log_file, "%s", phy_addr_str) != EOF)
   {
     // 將讀取的16進制字符串轉換為整數
     sscanf(phy_addr_str, "%llx", &phy_addr);
     // 輸出轉換後的整數
     unsigned int phy_frame_num = phy_addr >> 12;
-    printf("%s %u\n", phy_addr_str, phy_frame_num);
+    //printf("%s %u\n", phy_addr_str, phy_frame_num);
+    printf("%d\r\t\t\t\t\t\r", ++cnt);
 
     arc_lookup(phy_frame_num);
   }
